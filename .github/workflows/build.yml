@@ -1,0 +1,102 @@
+name: Kernel build
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: base
+            defconfig: lineage-o5lteswa_defconfig
+            frags: "arch/arm/configs/fragments/base-fixes.config"
+          - variant: light
+            defconfig: lineage-o5lteswa_defconfig
+            frags: "arch/arm/configs/fragments/base-fixes.config arch/arm/configs/fragments/light.config"
+          - variant: full
+            defconfig: lineage-o5lteswa_defconfig
+            frags: "arch/arm/configs/fragments/base-fixes.config arch/arm/configs/fragments/light.config arch/arm/configs/fragments/on5-debug.config"
+          - variant: stockcfg
+            defconfig: o5lteswa_00_defconfig
+            frags: "arch/arm/configs/fragments/base-fixes.config"
+    env:
+      DEFCONFIG: ${{ matrix.defconfig }}
+      CROSS_COMPILE: ${{ github.workspace }}/toolchain/bin/arm-linux-androideabi-
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 1 }
+
+      - name: Deps
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq bc bison flex libssl-dev libelf-dev device-tree-compiler \
+            u-boot-tools lzop cpio zip ccache python3 gcc-multilib || true
+
+      # Linux 3.10 needs an OLD compiler (gcc 4.9). Newer gcc breaks the tree.
+      - name: Cache toolchain
+        id: tc
+        uses: actions/cache@v4
+        with: { path: toolchain, key: gcc49-androideabi-lineage-17.1 }
+      - name: Fetch gcc 4.9 (arm-linux-androideabi)
+        if: steps.tc.outputs.cache-hit != 'true'
+        run: git clone --depth 1 -b lineage-17.1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9 toolchain
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ccache-${{ matrix.variant }}-${{ github.sha }}
+          restore-keys: ccache-${{ matrix.variant }}-
+
+      - name: Build
+        run: |
+          export PATH="/usr/lib/ccache:$PATH" CCACHE_DIR=$HOME/.ccache
+          set +e
+          tools-ci/build.sh "$DEFCONFIG" ${{ matrix.frags }} 2>&1 | tee ci-build.log
+          rc=${PIPESTATUS[0]}
+          if [ "$rc" != 0 ]; then
+            ERR=$(grep -n -i -E "error|\*\*\*|undefined reference|No rule|fatal" ci-build.log | head -15 | cut -c1-300)
+            TAIL=$(tail -40 ci-build.log | cut -c1-300)
+            enc() { printf '%s' "$1" | sed ':a;N;$!ba;s/%/%25/g;s/\r/%0D/g;s/\n/%0A/g'; }
+            echo "::error title=BUILD-ERRORS::$(enc "$ERR")"
+            echo "::error title=BUILD-TAIL::$(enc "$TAIL")"
+            exit $rc
+          fi
+
+      - name: Package (boot.img, Odin tar, AnyKernel3 zip)
+        run: |
+          V=${{ matrix.variant }}; Z=out/arch/arm/boot/zImage; ZS=$(stat -c%s $Z)
+          python3 tools-ci/mkbootimg.py --kernel $Z --out boot-$V.img
+          BS=$(stat -c%s boot-$V.img)
+          mkdir -p odin && cp boot-$V.img odin/boot.img
+          (cd odin && tar -H ustar -c boot.img > ../boot-$V.tar && cd .. && md5sum -t boot-$V.tar >> boot-$V.tar && mv boot-$V.tar boot-$V.tar.md5)
+          git clone --depth 1 https://github.com/osm0sis/AnyKernel3 ak3
+          cp tools-ci/anykernel.sh ak3/anykernel.sh; cp $Z ak3/zImage; cp out/.config ak3/kernel.config
+          (cd ak3 && rm -rf .git .github && zip -r9 ../on5-$V-${GITHUB_SHA::7}.zip . -x '*.git*')
+          cp out/.config config-$V; cp out/build.log build-$V.log
+          echo "::notice title=SIZES-$V::zImage=$ZS boot.img=$BS (BOOT partition=13631488)"
+          echo "::notice title=KCONFIG-$V::$(grep -E "CONFIG_(LOCALVERSION|PANIC_TIMEOUT|SEC_DEBUG_LAST_KMSG|MODULES|KPROBES|FUNCTION_TRACER|DYNAMIC_DEBUG|I2C_DEBUG_CORE|BOOTPARAM_SOFTLOCKUP_PANIC)=" out/.config | tr '\n' ' ')"
+          for f in arch/arm/configs/fragments/*.config; do :; done
+          echo "::notice title=DROPPED-$V::$(for f in ${{ matrix.frags }}; do tools-ci/check-frag.sh $f out/.config; done)"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: on5-${{ matrix.variant }}-${{ github.sha }}
+          path: |
+            boot-${{ matrix.variant }}.img
+            boot-${{ matrix.variant }}.tar.md5
+            on5-${{ matrix.variant }}-*.zip
+            config-${{ matrix.variant }}
+            build-${{ matrix.variant }}.log
+            out/vmlinux
+            out/System.map
+          if-no-files-found: warn
