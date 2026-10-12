@@ -7,7 +7,7 @@ FRAGS=("$@"); [ ${#FRAGS[@]} -eq 0 ] && FRAGS=(arch/arm/configs/fragments/on5-de
 OUT=${OUT:-out}; export ARCH=arm SUBARCH=arm
 # old 3.10 host tools (dtc yylloc) need -fcommon with modern host gcc
 HCF="-Wall -Wmissing-prototypes -Wstrict-prototypes -O2 -fomit-frame-pointer -fcommon"
-mkdir -p "$OUT"
+mkdir -p "$OUT" "$OUT/security/tima_uevent"   # stock Samsung defconfigs: out-of-tree build dir for TIMA
 make O="$OUT" HOSTCFLAGS="$HCF" "$DEFCONFIG"
 # merge fragments (3.10 merge_config.sh; -m = only merge, don't run make)
 KCONFIG_CONFIG="$OUT/.config" scripts/kconfig/merge_config.sh -m -O "$OUT" "$OUT/.config" "${FRAGS[@]}"
