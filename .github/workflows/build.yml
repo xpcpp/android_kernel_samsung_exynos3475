@@ -77,6 +77,7 @@ jobs:
         run: |
           V=${{ matrix.variant }}; Z=out/arch/arm/boot/zImage; ZS=$(stat -c%s $Z)
           python3 tools-ci/mkbootimg.py --kernel $Z --out boot-$V.img
+          python3 tools-ci/mkbootimg.py --kernel $Z --stock-trailer --out boot-$V-stocktail.img
           BS=$(stat -c%s boot-$V.img)
           mkdir -p odin && cp boot-$V.img odin/boot.img
           (cd odin && tar -H ustar -c boot.img > ../boot-$V.tar && cd .. && md5sum -t boot-$V.tar >> boot-$V.tar && mv boot-$V.tar boot-$V.tar.md5)
@@ -94,6 +95,7 @@ jobs:
           name: on5-${{ matrix.variant }}-${{ github.sha }}
           path: |
             boot-${{ matrix.variant }}.img
+            boot-${{ matrix.variant }}-stocktail.img
             boot-${{ matrix.variant }}.tar.md5
             on5-${{ matrix.variant }}-*.zip
             config-${{ matrix.variant }}
