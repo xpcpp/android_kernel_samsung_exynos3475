@@ -17,21 +17,18 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # PRISTINE control builds: unmodified defconfig, no fragments (only the packer + gcc4.9 differ from stock)
-          - variant: pure-lineage
-            defconfig: lineage-o5lteswa_defconfig
-            frags: ""
-          - variant: pure-samsung
+          # ALL variants use Samsung's original arch/arm/configs/o5lteswa_00_defconfig
+          - variant: pure-samsung        # pristine: no fragments, no tweaks (control)
             defconfig: o5lteswa_00_defconfig
             frags: ""
-          - variant: base
-            defconfig: lineage-o5lteswa_defconfig
+          - variant: base                # + panic_timeout=5 only
+            defconfig: o5lteswa_00_defconfig
             frags: "arch/arm/configs/fragments/base-fixes.config"
           - variant: light
-            defconfig: lineage-o5lteswa_defconfig
+            defconfig: o5lteswa_00_defconfig
             frags: "arch/arm/configs/fragments/base-fixes.config arch/arm/configs/fragments/light.config"
           - variant: full
-            defconfig: lineage-o5lteswa_defconfig
+            defconfig: o5lteswa_00_defconfig
             frags: "arch/arm/configs/fragments/base-fixes.config arch/arm/configs/fragments/light.config arch/arm/configs/fragments/on5-debug.config"
     env:
       DEFCONFIG: ${{ matrix.defconfig }}
