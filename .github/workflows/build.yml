@@ -17,6 +17,13 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # PRISTINE control builds: unmodified defconfig, no fragments (only the packer + gcc4.9 differ from stock)
+          - variant: pure-lineage
+            defconfig: lineage-o5lteswa_defconfig
+            frags: ""
+          - variant: pure-samsung
+            defconfig: o5lteswa_00_defconfig
+            frags: ""
           - variant: base
             defconfig: lineage-o5lteswa_defconfig
             frags: "arch/arm/configs/fragments/base-fixes.config"
@@ -26,9 +33,6 @@ jobs:
           - variant: full
             defconfig: lineage-o5lteswa_defconfig
             frags: "arch/arm/configs/fragments/base-fixes.config arch/arm/configs/fragments/light.config arch/arm/configs/fragments/on5-debug.config"
-          - variant: stockcfg
-            defconfig: o5lteswa_00_defconfig
-            frags: "arch/arm/configs/fragments/base-fixes.config"
     env:
       DEFCONFIG: ${{ matrix.defconfig }}
       CROSS_COMPILE: ${{ github.workspace }}/toolchain/bin/arm-linux-androideabi-
