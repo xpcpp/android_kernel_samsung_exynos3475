@@ -103,3 +103,49 @@ jobs:
             out/vmlinux
             out/System.map
           if-no-files-found: warn
+
+  # Exact replica of the known-booting av1acp build recipe (gcc 4.8, stock release string, zImage-dtb -> strip -> stock-trailer repack)
+  exact:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      TOOLCHAIN_DIR: ${{ github.workspace }}/toolchains/arm-eabi-4.8
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Deps
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq bc flex bison python3
+      - name: Cache toolchain
+        id: tc
+        uses: actions/cache@v4
+        with: { path: toolchains/arm-eabi-4.8, key: arm-eabi-4.8-marshmallow-release-v1 }
+      - name: Fetch AOSP arm-eabi-4.8 (fallback burstlam 4.9)
+        if: steps.tc.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p toolchains
+          git clone --depth 1 -b marshmallow-release https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-eabi-4.8 toolchains/arm-eabi-4.8 \
+          || git clone --depth 1 https://github.com/burstlam/arm-eabi-4.9 toolchains/arm-eabi-4.8
+      - name: Build (exact)
+        run: |
+          set +e
+          git fetch origin cm-14.1 --depth=1 2>/dev/null; git branch -f cm-14.1 FETCH_HEAD 2>/dev/null
+          tools-ci/exact-build.sh 2>&1 | tee ci-exact.log
+          rc=${PIPESTATUS[0]}
+          if [ "$rc" != 0 ]; then
+            ERR=$(grep -n -i -E "error|\*\*\*|undefined reference|No rule|fatal|mismatch" ci-exact.log | head -15 | cut -c1-300)
+            TAIL=$(tail -40 ci-exact.log | cut -c1-300)
+            enc() { printf '%s' "$1" | sed ':a;N;$!ba;s/%/%25/g;s/\r/%0D/g;s/\n/%0A/g'; }
+            echo "::error title=BUILD-ERRORS::$(enc "$ERR")"
+            echo "::error title=BUILD-TAIL::$(enc "$TAIL")"
+            exit $rc
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: exact-${{ github.sha }}
+          path: |
+            boot-exact-stocktail.img
+            arch/arm/boot/zImage-dtb
+            zImage-plain
+            kernel-exact.config
+            System-exact.map
+            build.log
