@@ -14,6 +14,9 @@ ident=h.digest().ljust(32,b'\0')
 hdr=struct.pack('<8s10I16s512s32s1024s',b'ANDROID!',len(k),P['kernel_addr'],len(r),P['ramdisk_addr'],len(s),P['second_addr'],
     P['tags_addr'],page,len(dt),P['os_version'],P['name'].encode(),P['cmdline'].encode(),ident,P['extra_cmdline'].encode())
 trailer=open(os.path.join(a.stock,'trailer.bin'),'rb').read() if a.stock_trailer else b'SEANDROIDENFORCE'
+if a.stock_trailer:
+    # exact "repack_boot.py" behaviour: stock header untouched except kernel_size (id/sha field stays stale), stock tail kept
+    hb=bytearray(open(os.path.join(a.stock,'header.bin'),'rb').read()); hb[8:12]=struct.pack('<I',len(k)); hdr=bytes(hb)
 img=pad(hdr)+pad(k)+pad(r)+pad(s)+pad(dt)+trailer
 open(a.out,'wb').write(img)
 print(f'wrote {a.out}: {len(img)} bytes (kernel {len(k)}, stock total {P["stock_total"]})')
